@@ -399,6 +399,7 @@
     <Compile Include="SexyContent\ImportExport\ZipExport.cs" />
     <Compile Include="SexyContent\ImportExport\ZipImport.cs" />
     <Compile Include="SexyContent\Templates.cs" />
+    <Compile Include="SexyContent\WebApi\AssetsController.cs" />
     <Compile Include="SexyContent\WebApi\AppQueryController.cs" />
     <Compile Include="SexyContent\WebApi\AppContentController.cs" />
     <Compile Include="SexyContent\WebApi\RouteMapper.cs" />

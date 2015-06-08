@@ -32,11 +32,13 @@ namespace ToSic.SexyContent.WebApi
             mapRouteManager.MapHttpRoute("2sxc", "app-query", "app-query/{name}", new { controller = "AppQuery"}, new[] { "ToSic.SexyContent.WebApi" });
             mapRouteManager.MapHttpRoute("2sxc", "default", "{controller}/{action}", new[] { "ToSic.SexyContent.GettingStarted" });
 
+            mapRouteManager.MapHttpRoute("2sxc", "app-content-assets", "app-content/{contenttype}/{id}/{field}", new { controller = "Assets" }, new[] { "ToSic.SexyContent.WebApi" });
+            
             /*
-            mapRouteManager.MapHttpRoute("2sxc", "named-app-query", "app/{apppath}/query/{name}", new { controller = "AppQuery" }, new[] { "ToSic.SexyContent.WebApi" });
-            mapRouteManager.MapHttpRoute("2sxc", "named-app-api", "app/{apppath}/api/{controller}/{action}", new[] { "ToSic.SexyContent.Apps" });
-            mapRouteManager.MapHttpRoute("2sxc", "named-app-content", "app/{apppath}/{contenttype}/{id}", new { controller = "AppContent", id = RouteParameter.Optional }, new[] { "ToSic.SexyContent.WebApi" });
-            */
+                        mapRouteManager.MapHttpRoute("2sxc", "named-app-query", "app/{apppath}/query/{name}", new { controller = "AppQuery" }, new[] { "ToSic.SexyContent.WebApi" });
+                        mapRouteManager.MapHttpRoute("2sxc", "named-app-api", "app/{apppath}/api/{controller}/{action}", new[] { "ToSic.SexyContent.Apps" });
+                        mapRouteManager.MapHttpRoute("2sxc", "named-app-content", "app/{apppath}/{contenttype}/{id}", new { controller = "AppContent", id = RouteParameter.Optional }, new[] { "ToSic.SexyContent.WebApi" });
+                        */
 
             var config = GlobalConfiguration.Configuration;
             var previousSelector = config.Services.GetService(typeof(IHttpControllerSelector)) as IHttpControllerSelector;
