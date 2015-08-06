@@ -1,5 +1,5 @@
 ﻿.eav-field { position: relative;min-height: 19px;padding-bottom: 10px; width:50% }
-.eav-dimensionmenu-wrapper { width: 281px;float: right; }
+.eav-dimensionmenu-wrapper { width: 250px;float: right; }
 .eav-dimension, .eav-contextmenu {position: relative; padding-left: 0px;margin-top: 2px; height: 27px;display: block; color: #BBB;line-height: 25px; }
 .eav-dimension-lockicon { background: url(images/unlocked.png) no-repeat top left;display: inline; padding-left: 24px;    padding-top: 4px;position: relative; }
 .eav-dimension-locked .eav-dimension-lockicon { background: url(images/Locked.png) no-repeat top left;}
@@ -45,3 +45,5 @@ ul.eav-dimension-actions, .eav-dimension-actions ul, ul.eav-contextmenu-actions,
 .eav-gps-map-latitude, .eav-gps-map-longitude { width: 87px !important;}
 .eav-gps-map-actions input[type='button'] { background: none repeat scroll 0 0 #DDDDDD; border: 1px solid #BBBBBB; margin: 1px 2px 1px 6px; padding: 3px; }
 
+/* Fix bug - DNN page picker adds overflow:hidden to the HTML node after picking a page, so overwrite this */
+html { overflow:auto!important; }

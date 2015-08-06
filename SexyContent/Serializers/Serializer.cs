@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using DotNetNuke.Entities.Portals;
+using DotNetNuke.Entities.Users;
 using ToSic.Eav;
 using ToSic.SexyContent.EAVExtensions;
 
@@ -64,8 +66,8 @@ namespace ToSic.SexyContent.Serializers
 					dictionary.Add("Presentation", GetDictionaryFromEntity(entityInGroup.Presentation, language));
 			}
 
-            // Check w/2rm - this should only happen in edit mode...
-		    if (true) // todo: edit-mode-only...?
+            // Add additional information in case we're in edit mode
+            if(DotNetNuke.Common.Globals.IsEditMode())
 		    {
                 dictionary.Add("Modified", entity.Modified);
                 

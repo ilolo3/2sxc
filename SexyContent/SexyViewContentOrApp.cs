@@ -27,6 +27,7 @@ namespace ToSic.SexyContent
 
 		protected void Page_Load(object sender, EventArgs e)
 		{
+
 			ServicesFramework.Instance.RequestAjaxAntiForgerySupport();
 
 			try
@@ -35,13 +36,20 @@ namespace ToSic.SexyContent
 				// If logged in, inject Edit JavaScript, and delete / add items
 				if (UserMayEditThisModule)
 				{
-					var ClientScript = Page.ClientScript;
 					// ToDo: Move these RegisterScripts to JS to prevent including AngularJS twice (from other modules)
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/AngularJS/angular.min.js", 80);
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/2sxc.TemplateSelector.js", 81);
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/2sxc.ApiService.js", 82);
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/ViewEdit.js", 82);
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/2sxc.DnnActionMenuMapper.js", 83);
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/angularjs/angular.min.js", 80);
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/template-selector/template-selector.min.js", 81);
+
+                    // New: multi-language stuff
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/bower_components/angular-translate/angular-translate.min.js", 82);
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/bower_components/angular-translate-loader-static-files/angular-translate-loader-static-files.min.js", 83);
+
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/dnn-inpage-edit.min.js", 82);
+
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/2sxc.api.min.js", 90);
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/2sxc.api.manage.min.js", 91);
+
+                    ClientResourceManager.RegisterScript(Page, "~/desktopmodules/tosic_sexycontent/js/angularjs/2sxc4ng.min.js", 93); 
 
 					var hasContent = AppId.HasValue && Template != null && ContentGroup.Exists;
 					var templateChooserVisible = Settings.ContainsKey(SexyContent.SettingsShowTemplateChooser) ?
@@ -70,12 +78,13 @@ namespace ToSic.SexyContent
 								appPath = AppId.HasValue ? Sexy.App.Path : null,
 								cultureDimension = AppId.HasValue ? Sexy.GetCurrentLanguageID() : new int?(),
 								isList = Template != null && Template.UseForList
-							}
+							},
+                            lang = System.Threading.Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName.ToLower(),
+                            fallbackLang = new [] {"en"},
+                            applicationRoot = ResolveUrl("~")
 						}
 					}));
 
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/2sxc.api.js", 90);
-					ClientResourceManager.RegisterScript(Page, "~/DesktopModules/ToSIC_SexyContent/Js/2sxc.api.manage.js", 91);
 				}
 			}
 			catch (Exception ex)
@@ -83,6 +92,25 @@ namespace ToSic.SexyContent
 				Exceptions.ProcessModuleLoadException(this, ex);
 			}
 
+		}
+
+		protected bool EnsureUpgrade(Panel pnlError)
+		{
+			// Upgrade success check - show message if upgrade did not run successfully
+			if (UserInfo.IsSuperUser && !SexyContentModuleUpgrade.UpgradeComplete)
+			{
+				if (Request.QueryString["finishUpgrade"] == "true")
+					SexyContentModuleUpgrade.FinishAbortedUpgrade();
+
+				if(SexyContentModuleUpgrade.IsUpgradeRunning)
+					ShowError("It looks like a 2sxc upgrade is currently running. Please wait for the operation to complete (the upgrade may take a few minutes).", pnlError, "", false);
+				else
+					ShowError("Module upgrade did not complete. Please click the following button to finish the upgrade:<br><a class='dnnPrimaryAction' href='?finishUpgrade=true'>Finish Upgrade</a>", pnlError, "Module upgrade did not complete successfully. Please login as host user to finish the upgrade.", false);
+
+				return false;
+			}
+
+			return true;
 		}
 
 		/// <summary>
@@ -211,16 +239,16 @@ namespace ToSic.SexyContent
 		{
 			get
 			{
-				if (ModuleConfiguration.PortalID != ModuleConfiguration.OwnerPortalID)
-					return new ModuleActionCollection();
-
-				if (_ModuleActions == null)
+				try
 				{
-					_ModuleActions = new ModuleActionCollection();
-					var Actions = _ModuleActions;
+					if (ModuleConfiguration.PortalID != ModuleConfiguration.OwnerPortalID)
+						return new ModuleActionCollection();
 
-					try
+					if (_ModuleActions == null)
 					{
+						_ModuleActions = new ModuleActionCollection();
+						var Actions = _ModuleActions;
+
 						if (ZoneId.HasValue && AppId.HasValue)
 						{
 							if (!IsList)
@@ -273,12 +301,13 @@ namespace ToSic.SexyContent
 										false, SecurityAccessLevel.Admin, true, false);
 						}
 					}
-					catch (Exception e)
-					{
-						Exceptions.ProcessModuleLoadException(this, e);
-					}
+					return _ModuleActions;
 				}
-				return _ModuleActions;
+				catch(Exception e)
+				{
+					Exceptions.LogException(e);
+					return new ModuleActionCollection();
+				}
 			}
 		}
 

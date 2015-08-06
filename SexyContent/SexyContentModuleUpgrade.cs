@@ -8,43 +8,183 @@ using System.Linq;
 using System.Web;
 using System.Xml.Linq;
 using DotNetNuke.Entities.Portals;
+using DotNetNuke.Services.Exceptions;
+using DotNetNuke.Services.Upgrade;
 using DotNetNuke.Web.Client.ClientResourceManagement;
 using ToSic.Eav;
 using ToSic.Eav.DataSources.Caches;
 using ToSic.Eav.Import;
 using ToSic.SexyContent.ImportExport;
-using Attribute = ToSic.Eav.Import.Attribute;
-using AttributeSet = ToSic.Eav.Import.AttributeSet;
-using Entity = ToSic.Eav.Import.Entity;
+using System.Text;
+using System.Web.Hosting;
 
 namespace ToSic.SexyContent
 {
 	public class SexyContentModuleUpgrade
 	{
+		public static readonly bool UpgradeComplete;
+
+		private static string _logDirectory = "~/DesktopModules/ToSIC_SexyContent/Upgrade/Log/";
+
+		static SexyContentModuleUpgrade()
+		{
+			UpgradeComplete = IsUpgradeComplete(SexyContent.ModuleVersion);
+		}
+
 		public static string UpgradeModule(string version)
 		{
-			switch (version)
+			if (IsUpgradeComplete(version))
+				throw new Exception("2sxc upgrade for version " + version + " started, but it looks like the upgrade for this version is already complete. Aborting upgrade.");
+
+			if (IsUpgradeRunning)
+				throw new Exception("2sxc upgrade for version " + version + " started, but the upgrade is already running. Aborting upgrade.");
+
+			IsUpgradeRunning = true;
+			LogUpgradeStep("----- Upgrade to " + version + " started -----");
+
+			try
 			{
-				case "05.05.00":
-					Version050500();
-					break;
-				case "06.06.00":
-				case "06.06.04":
-					EnsurePipelineDesignerAttributeSets();
-					break;
-				case "07.00.00":
-					Version070000();
-					break;
-				case "07.00.03":
-					Version070003();
-					break;
+
+				switch (version)
+				{
+					case "01.00.00": // Make sure that log folder is not existent on new installations
+						if (Directory.Exists(HostingEnvironment.MapPath(_logDirectory)))
+							Directory.Delete(HostingEnvironment.MapPath(_logDirectory), true);
+						break;
+					case "05.05.00":
+						Version050500();
+						break;
+					case "06.06.00":
+					case "06.06.04":
+						EnsurePipelineDesignerAttributeSets();
+						break;
+					case "07.00.00":
+						Version070000();
+						break;
+					case "07.00.03":
+						Version070003();
+						break;
+					case "07.02.00":
+						Version070200();
+						break;
+					case "07.02.02":
+						// Make sure upgrades between 07.00.00 and 07.02.02 do not run again when FinishAbortedUpgrade is triggered
+						LogSuccessfulUpgrade("07.00.00", false);
+						LogSuccessfulUpgrade("07.00.03", false);
+						LogSuccessfulUpgrade("07.02.00", false);
+						break;
+				}
+
+				// Increase ClientDependency version upon each upgrade (System and all Portals)
+				// prevents browsers caching old JS and CSS files for editing, which could cause several errors
+				ClientResourceManager.UpdateVersion();
+
+				LogSuccessfulUpgrade(version);
+				LogUpgradeStep("----- Upgrade to " + version + " completed -----");
+
+			}
+			catch (Exception e)
+			{
+				LogUpgradeStep(version, "Upgrade failed - " + e.Message);
+				throw;
+			}
+			finally
+			{
+				IsUpgradeRunning = false;
 			}
 
-			// Increase ClientDependency version upon each upgrade (System and all Portals)
-			// prevents browsers caching old JS and CSS files for editing, which could cause several errors
-			ClientResourceManager.UpdateVersion();
-
 			return version;
+		}
+
+		internal static void FinishAbortedUpgrade() {
+			// Maybe this list can somehow be extracted from the module manifest?
+			var upgradeVersionList = new[] { "07.00.00", "07.00.03", "07.02.00", "07.02.02" };
+
+			// Run upgrade again for all versions that do not have a corresponding logfile
+			foreach(var upgradeVersion in upgradeVersionList) {
+				if(!IsUpgradeComplete(upgradeVersion))
+					UpgradeModule(upgradeVersion);
+			}
+
+			// Restart application
+			HttpRuntime.UnloadAppDomain();
+		}
+
+		internal static void LogSuccessfulUpgrade(string version, bool appendToFile = true)
+		{
+			if(!Directory.Exists(HostingEnvironment.MapPath(_logDirectory)))
+				Directory.CreateDirectory(HostingEnvironment.MapPath(_logDirectory));
+
+			var logFilePath = HostingEnvironment.MapPath(_logDirectory + version + ".resources");
+			if(appendToFile || !File.Exists(logFilePath))
+			File.AppendAllText(logFilePath, DateTime.UtcNow.ToString(@"yyyy-MM-ddTHH\:mm\:ss.fffffffzzz"), Encoding.UTF8);
+		}
+
+		internal static bool IsUpgradeComplete(string version) {
+			var logFilePath = HostingEnvironment.MapPath(_logDirectory + version + ".resources");
+			return File.Exists(logFilePath);
+		}
+
+		private static FileStream upgradeFileHandle = null;
+		private static StreamWriter upgradeFileStreamWriter = null;
+		internal static bool IsUpgradeRunning
+		{
+			get
+			{
+				if (!Directory.Exists(HostingEnvironment.MapPath(_logDirectory)))
+					Directory.CreateDirectory(HostingEnvironment.MapPath(_logDirectory));
+
+				var lockFilePath = HostingEnvironment.MapPath(_logDirectory + "lock.resources");
+				if (!File.Exists(lockFilePath))
+					return false;
+
+				FileStream stream = null;
+				try
+				{
+					stream = new FileStream(lockFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+				}
+				catch (IOException)
+				{
+					// The file is unavailable because it is:
+					// - being processed by another thread
+					// - does not exist (has already been processed)
+					return true;
+				}
+				finally
+				{
+					if (stream != null)
+						stream.Close();
+				}
+
+				return false;
+			}
+			private set
+			{
+				var lockFilePath = HostingEnvironment.MapPath(_logDirectory + "lock.resources");
+				if (value)
+				{
+					upgradeFileHandle =  new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+					upgradeFileStreamWriter = new StreamWriter(upgradeFileHandle);
+				}
+				else
+				{
+					upgradeFileHandle.Close();
+					var renamedLockFilePath =
+						HostingEnvironment.MapPath(_logDirectory + DateTime.UtcNow.ToString(@"yyyy-MM-dd HH-mm-ss-fffffff") + ".log.resources");
+					File.Move(lockFilePath, renamedLockFilePath);
+				}
+			}
+		}
+
+		private static void LogUpgradeStep(string message)
+		{
+			upgradeFileStreamWriter.WriteLine(DateTime.UtcNow.ToString(@"yyyy-MM-ddTHH\:mm\:ss") + " " + message);
+			upgradeFileStreamWriter.Flush();
+		}
+
+		private static void LogUpgradeStep(string version, string message)
+		{
+			LogUpgradeStep(version + " - " + message);
 		}
 
 		/// <summary>
@@ -88,15 +228,15 @@ namespace ToSic.SexyContent
 		private static void EnsurePipelineDesignerAttributeSets()
 		{
 			// Ensure DnnSqlDataSource Configuration
-			var dsrcSqlDataSource = AttributeSet.SystemAttributeSet("|Config ToSic.SexyContent.DataSources.DnnSqlDataSource", "used to configure a DNN SqlDataSource",
-				new List<Attribute>
+			var dsrcSqlDataSource = ImportAttributeSet.SystemAttributeSet("|Config ToSic.SexyContent.DataSources.DnnSqlDataSource", "used to configure a DNN SqlDataSource",
+				new List<ImportAttribute>
 				{
-					Attribute.StringAttribute("ContentType", "ContentType", null, true),
-					Attribute.StringAttribute("SelectCommand", "SelectCommand", null, true, rowCount: 10)
+					ImportAttribute.StringAttribute("ContentType", "ContentType", null, true),
+					ImportAttribute.StringAttribute("SelectCommand", "SelectCommand", null, true, rowCount: 10)
 				});
 
 			// Collect AttributeSets for use in Import
-			var attributeSets = new List<AttributeSet>
+            var attributeSets = new List<ImportAttributeSet>
 			{
 				dsrcSqlDataSource
 			};
@@ -232,11 +372,11 @@ WHERE        (ToSIC_SexyContent_Templates.SysDeleted IS NULL) AND ((SELECT COUNT
 			#region Prepare ContentGroups
 
 			var contentGroupItemsTable = new DataTable();
-			const string sqlCommandContentGroups = @"SELECT        ToSIC_SexyContent_ContentGroupItems.ContentGroupItemID, ToSIC_SexyContent_ContentGroupItems.ContentGroupID, 
+			const string sqlCommandContentGroups = @"SELECT DISTINCT        ToSIC_SexyContent_ContentGroupItems.ContentGroupItemID, ToSIC_SexyContent_ContentGroupItems.ContentGroupID, 
                          ToSIC_SexyContent_ContentGroupItems.TemplateID, ToSIC_SexyContent_ContentGroupItems.SortOrder, ToSIC_SexyContent_ContentGroupItems.Type, 
                          ToSIC_SexyContent_ContentGroupItems.SysCreated, ToSIC_SexyContent_ContentGroupItems.SysCreatedBy, ToSIC_SexyContent_ContentGroupItems.SysModified, 
                          ToSIC_SexyContent_ContentGroupItems.SysModifiedBy, ToSIC_SexyContent_ContentGroupItems.SysDeleted, 
-                         ToSIC_SexyContent_ContentGroupItems.SysDeletedBy, ModuleSettings.ModuleID, ToSIC_SexyContent_Templates.AppID, ToSIC_EAV_Apps.ZoneID, 
+                         ToSIC_SexyContent_ContentGroupItems.SysDeletedBy, ToSIC_SexyContent_Templates.AppID, ToSIC_EAV_Apps.ZoneID, 
                          ToSIC_EAV_Entities.EntityGUID, ToSIC_SexyContent_ContentGroupItems.EntityID, ToSIC_SexyContent_ContentGroupItems.Temp_NewContentGroupGuid, ToSIC_SexyContent_Templates.Temp_NewTemplateGuid
 FROM            ToSIC_SexyContent_Templates INNER JOIN
                          ModuleSettings INNER JOIN
@@ -259,7 +399,6 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 				TemplateId = c["TemplateID"] == DBNull.Value ? new int?() : (int)c["TemplateID"],
 				SortOrder = (int)c["SortOrder"],
 				Type = (string)c["Type"],
-				ModuleId = (int)c["ModuleID"],
 				AppId = (int)c["AppID"],
 				ZoneId = (int)c["ZoneID"],
 				TemplateEntityGuids = new List<Guid>() { Guid.Parse((string)c["Temp_NewTemplateGuid"]) }
@@ -274,7 +413,7 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 					itemsList.First().AppId,
 					itemsList.First().ZoneId,
 					ContentGroupId = id,
-					TemplateGuids = itemsList.First().TemplateEntityGuids, itemsList.First().ModuleId,
+					TemplateGuids = itemsList.First().TemplateEntityGuids,
 					ContentGuids = itemsList.Where(p => p.Type == "Content").Select(p => p.EntityGuid).ToList(),
 					PresentationGuids = itemsList.Where(p => p.Type == "Presentation").Select(p => p.EntityGuid).ToList(),
 					ListContentGuids = itemsList.Where(p => p.Type == "ListContent").Select(p => p.EntityGuid).ToList(),
@@ -293,12 +432,14 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 
 			foreach (var app in apps)
 			{
+				LogUpgradeStep("07.00.00", "Starting to migrate data for app " + app + "...");
+
 				var currentApp = app;
-				var entitiesToImport = new List<Entity>();
+				var entitiesToImport = new List<ImportEntity>();
 
 				foreach (var t in existingTemplates.Where(t => t.AppId == currentApp))
 				{
-					var entity = new Entity
+                    var entity = new ImportEntity
 					{
 						AttributeSetStaticName = "2SexyContent-Template",
 						EntityGuid = t.NewEntityGuid,
@@ -336,7 +477,7 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 
 				foreach (var t in existingContentGroups.Where(t => t.AppId == app))
 				{
-					var entity = new Entity
+                    var entity = new ImportEntity
 					{
 						AttributeSetStaticName = "2SexyContent-ContentGroup",
 						EntityGuid = t.NewEntityGuid,
@@ -361,6 +502,8 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 
 				var import = new Eav.Import.Import(null, app, userName);
 				import.RunImport(null, entitiesToImport);
+
+				LogUpgradeStep("07.00.00", "Migrated data for app " + app);
 			}
 
 			// 4. Use new GUID ContentGroup-IDs on module settings
@@ -402,6 +545,30 @@ WHERE        (ToSIC_SexyContent_ContentGroupItems.SysDeleted IS NULL) AND (Modul
 			}
 
 		}
+
+		private static void Version070200()
+		{
+			var userName = "System-ModuleUpgrade-070200";
+
+			// Import new ContentType for permissions
+			if (DataSource.GetCache(DataSource.DefaultZoneId, DataSource.MetaDataAppId).GetContentType("|Config ToSic.Eav.DataSources.Paging") == null)
+			{
+
+				var xmlToImport =
+					File.ReadAllText(HttpContext.Current.Server.MapPath("~/DesktopModules/ToSIC_SexyContent/Upgrade/07.02.00.xml"));
+				//var xmlToImport = File.ReadAllText("../../../../Upgrade/07.00.00.xml");
+				var xmlImport = new XmlImport("en-US", userName, true);
+				var success = xmlImport.ImportXml(DataSource.DefaultZoneId, DataSource.MetaDataAppId, XDocument.Parse(xmlToImport));
+
+				if (!success)
+				{
+					var messages = String.Join("\r\n- ", xmlImport.ImportLog.Select(p => p.Message).ToArray());
+					throw new Exception("The 2sxc module upgrade to 07.02.00 failed: " + messages);
+				}
+			}
+
+		}
+
 
 		/// <summary>
 		/// Copy a Directory recursive

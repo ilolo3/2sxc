@@ -164,3 +164,10 @@ ModulePackages/
 
 # Ignore .manifest file created by DNN while installing the module
 Resources.zip.manifest
+
+# node and grunt
+node_*/
+grunt*/
+
+# 2sxc Upgrade Logs
+/Upgrade/Log

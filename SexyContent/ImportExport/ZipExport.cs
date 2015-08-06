@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Web;
+using System.Xml.Linq;
+using System.Xml.XPath;
 using ICSharpCode.SharpZipLib.Zip;
 using ToSic.Eav;
 
@@ -13,15 +15,23 @@ namespace ToSic.SexyContent.ImportExport
         private readonly int _appId;
         private readonly int _zoneId;
         private readonly SexyContent _sexy;
+        private string _sexycontentContentgroupName = "2SexyContent-ContentGroup";
+        private string _blankGuid = "00000000-0000-0000-0000-000000000000";
+        private string _zipFolderForPortalFiles = "PortalFiles";
+        private string _zipFolderForAppStuff = "2sexy";
+        private string _AppXmlFileName = "App.xml";
+
+        public FileManager FileManager;
 
         public ZipExport(int zoneId, int appId)
         {
             _appId = appId;
             _zoneId = zoneId;
             _sexy = new SexyContent(_zoneId, _appId);
+            FileManager = new FileManager(_sexy.App.PhysicalPath);
         }
 
-        public MemoryStream ExportApp(bool includeContentGroups = false)
+        public MemoryStream ExportApp(bool includeContentGroups = false, bool resetAppGuid = false)
         {
             // Get Export XML
             var attributeSets = _sexy.GetAvailableContentTypes(SexyContent.AttributeSetScope).ToList();
@@ -33,14 +43,25 @@ namespace ToSic.SexyContent.ImportExport
 				&& e.Value.AssignmentObjectTypeId != DataSource.AssignmentObjectTypeIdFieldProperties).ToList();
 
 	        if (!includeContentGroups)
-		        entities = entities.Where(p => p.Value.Type.StaticName != "2SexyContent-ContentGroup").ToList();
+	            entities = entities.Where(p => p.Value.Type.StaticName != _sexycontentContentgroupName).ToList();
 
             var entityIds = entities
                 .Select(e => e.Value.EntityId.ToString()).ToArray();
 
             var messages = new List<ExportImportMessage>();
-            var xmlExport = new XmlExport(_zoneId, _appId, true);
-            var xml = xmlExport.ExportXml(attributeSetIds, entityIds, out messages);
+            var xmlExport = new XmlExporter(_zoneId, _appId, true,attributeSetIds, entityIds);
+
+
+            #region reset App Guid if necessary
+            if (resetAppGuid)
+            {
+                var root = xmlExport.ExportXDocument;//.Root;
+                var appGuid = root.XPathSelectElement("/SexyContent/Header/App").Attribute("Guid");
+                appGuid.Value = _blankGuid;
+            }
+            #endregion
+
+            string xml = xmlExport.GenerateNiceXml();
 
             #region Copy needed files to temporary directory
 
@@ -51,13 +72,15 @@ namespace ToSic.SexyContent.ImportExport
 
             var tempDirectory = new DirectoryInfo(temporaryDirectoryPath);
             var appDirectory = tempDirectory.CreateSubdirectory("Apps/" + _sexy.App.Folder + "/");
-            var sexyDirectory = appDirectory.CreateSubdirectory("2sexy");
-            var portalFilesDirectory = appDirectory.CreateSubdirectory("PortalFiles");
+            
+            var sexyDirectory = appDirectory.CreateSubdirectory(_zipFolderForAppStuff);
+            
+            var portalFilesDirectory = appDirectory.CreateSubdirectory(_zipFolderForPortalFiles);
 
             // Copy app folder
             if (Directory.Exists(_sexy.App.PhysicalPath))
             {
-                ImportExportHelpers.CopyAllFiles(_sexy.App.PhysicalPath, sexyDirectory.FullName, false, messages);
+                FileManager.CopyAllFiles(sexyDirectory.FullName, false, messages);
             }
 
             // Copy PortalFiles
@@ -72,7 +95,7 @@ namespace ToSic.SexyContent.ImportExport
             }
             
             // Save export xml
-            File.AppendAllText(Path.Combine(appDirectory.FullName, "App.xml"), xml);
+            File.AppendAllText(Path.Combine(appDirectory.FullName, _AppXmlFileName), xml);
 
             #endregion
 

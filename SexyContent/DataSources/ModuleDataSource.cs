@@ -39,13 +39,12 @@ namespace ToSic.SexyContent.DataSources
         public ModuleDataSource()
         {
             Out.Add("Default", new DataStream(this, "Default", GetContent));
-			//Out.Add("Presentation", new DataStream(this, "Default", GetPresentation));
             Out.Add("ListContent", new DataStream(this, "Default", GetListContent));
-			//Out.Add("ListPresentation", new DataStream(this, "Default", GetListPresentation));
 
 			Configuration.Add("ModuleId", "[Module:ModuleID||[Module:ModuleId]]");	// Look for ModuleID and ModuleId
         }
 
+        #region Cached properties for Content, Presentation etc. --> not necessary, as each stream auto-caches
         private IDictionary<int, IEntity> _content;
         private IDictionary<int, IEntity> GetContent()
         {
@@ -71,7 +70,7 @@ namespace ToSic.SexyContent.DataSources
         {
             if (_listContent == null)
             {
-                _listContent = GetStream(ContentGroup.ListContent, Template.ListContentDemoEntity, ContentGroup.ListPresentation, Template.ListPresentationDemoEntity);
+                _listContent = GetStream(ContentGroup.ListContent, Template.ListContentDemoEntity, ContentGroup.ListPresentation, Template.ListPresentationDemoEntity, true);
             }
             return _listContent;
         }
@@ -81,12 +80,13 @@ namespace ToSic.SexyContent.DataSources
         {
             if (_listPresentation == null)
             {
-                _listPresentation = GetStream(ContentGroup.ListPresentation, Template.ListPresentationDemoEntity, null, null);
+                _listPresentation = GetStream(ContentGroup.ListPresentation, Template.ListPresentationDemoEntity, null, null, true);
             }
             return _listPresentation;
         }
+        #endregion
 
-		private Template _template;
+        private Template _template;
 		private Template Template
         {
 			get
@@ -99,7 +99,7 @@ namespace ToSic.SexyContent.DataSources
 			}
 		}
 
-		private IDictionary<int, IEntity> GetStream(List<IEntity> content, IEntity contentDemoEntity, List<IEntity> presentation, IEntity presentationDemoEntity)
+		private IDictionary<int, IEntity> GetStream(List<IEntity> content, IEntity contentDemoEntity, List<IEntity> presentation, IEntity presentationDemoEntity, bool isListHeader = false)
         {
 			var entitiesToDeliver = new Dictionary<int, IEntity>();
 			if (ContentGroup.Template == null && !OverrideTemplateId.HasValue) return entitiesToDeliver;
@@ -148,7 +148,7 @@ namespace ToSic.SexyContent.DataSources
 
 				entitiesToDeliver.Add(key, new EntityInContentGroup(originals[entityId.Value])
 				{
-				    SortOrder = i, 
+				    SortOrder = isListHeader ? -1 : i, 
                     ContentGroupItemModified = originals[entityId.Value].Modified, 
                     Presentation = presentationEntity, 
                     GroupId = ContentGroup.ContentGroupGuid
