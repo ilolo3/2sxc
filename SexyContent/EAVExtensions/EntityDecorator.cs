@@ -26,6 +26,16 @@ namespace ToSic.SexyContent.EAVExtensions
             return _baseEntity.GetPublished();
         }
 
+        public object GetBestValue(string attributeName, bool resolveHyperlinks = false)
+        {
+            return _baseEntity.GetBestValue(attributeName, resolveHyperlinks);
+        }
+
+        public object GetBestValue(string attributeName, string[] dimensions, bool resolveHyperlinks = false)
+        {
+            return _baseEntity.GetBestValue(attributeName, dimensions, resolveHyperlinks);
+        }
+
         public int EntityId {
             get { return _baseEntity.EntityId; }
         }
