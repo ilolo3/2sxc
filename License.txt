@@ -1,4 +1,4 @@
-Everything in 2sxc is <em>free open source</em> :)
+Everything in 2sxc is <em>free open source</em> :). New
 
 2sxc itself is released under the MIT license. It also uses many other open source components with different open-source licenses, from AGPL to X11. 
 
